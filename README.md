@@ -27,6 +27,20 @@ python -m matkit --help
 python -m matkit adsorption so4-cu2o examples/so4_cu2o/POSCAR --recommend --verbose
 ```
 
+启动点击式本地 Web 界面：
+
+```bash
+python -m matkit ui --port 8765
+```
+
+然后在浏览器打开：
+
+```text
+http://127.0.0.1:8765
+```
+
+该界面提供能量类型下拉选择、路径输入框、目录浏览弹窗、结果表格，以及 CSV/JSON 输出路径配置。适合批量表面过剩能、单个表面过剩能、吸附能和掺杂形成能的日常后处理。
+
 导出结构化结果：
 
 ```bash

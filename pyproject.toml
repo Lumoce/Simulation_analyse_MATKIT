@@ -24,3 +24,6 @@ matkit = "matkit.cli.main:main"
 
 [tool.setuptools.packages.find]
 include = ["matkit*"]
+
+[tool.setuptools.package-data]
+"matkit.ui" = ["static/*.html", "static/*.css", "static/*.js"]

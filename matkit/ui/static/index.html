@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>MatKit Energy Workbench</title>
+    <link rel="stylesheet" href="/app.css">
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">M</div>
+          <div>
+            <h1>MatKit</h1>
+            <p>Energy Workbench</p>
+          </div>
+        </div>
+
+        <section class="panel">
+          <label for="energyType">能量类型</label>
+          <select id="energyType">
+            <option value="surface_batch">表面过剩能 - 批量</option>
+            <option value="surface_single">表面过剩能 - 单个</option>
+            <option value="adsorption">吸附能</option>
+            <option value="doping">掺杂形成能</option>
+          </select>
+        </section>
+
+        <section class="panel stack">
+          <div class="mode-note" data-mode="surface_batch">
+            <strong>批量表面过剩能</strong>
+            <span>扫描同一根目录下所有包含 POSCAR 和 OUTCAR/OSZICAR/log 的计算文件夹。</span>
+          </div>
+          <div class="mode-note hidden" data-mode="surface_single">
+            <strong>单个表面过剩能</strong>
+            <span>选择一个 slab 计算目录，单质化学势由参考库自动读取。</span>
+          </div>
+          <div class="mode-note hidden" data-mode="adsorption">
+            <strong>吸附能</strong>
+            <span>选择吸附后体系、清洁表面和独立吸附物的计算结果。</span>
+          </div>
+          <div class="mode-note hidden" data-mode="doping">
+            <strong>掺杂形成能</strong>
+            <span>选择掺杂体系和纯净结构，并输入化学势与电荷项。</span>
+          </div>
+        </section>
+      </aside>
+
+      <main class="workspace">
+        <header class="topbar">
+          <div>
+            <p class="eyebrow">Local VASP post-processing</p>
+            <h2>能量分析工作台</h2>
+          </div>
+          <div class="status-pill" id="serverStatus">Ready</div>
+        </header>
+
+        <form id="energyForm" class="form-grid">
+          <section class="form-section" data-show="surface_batch">
+            <h3>批量计算目录</h3>
+            <div class="field-row">
+              <label for="surfaceRoot">Surface_energy 根目录</label>
+              <div class="path-control">
+                <input id="surfaceRoot" name="root" type="text" placeholder="/path/to/Surface_energy">
+                <button type="button" class="browse-btn" data-target="surfaceRoot">浏览</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="form-section hidden" data-show="surface_single">
+            <h3>单个 slab 目录</h3>
+            <div class="field-row">
+              <label for="surfaceSlab">Slab 计算目录或能量文件</label>
+              <div class="path-control">
+                <input id="surfaceSlab" name="slab" type="text" placeholder="/path/to/task.1_top">
+                <button type="button" class="browse-btn" data-target="surfaceSlab">浏览</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="form-section" data-show="surface_batch surface_single">
+            <h3>单质参考库</h3>
+            <div class="field-row">
+              <label for="referenceDb">simple_substance_database</label>
+              <div class="path-control">
+                <input id="referenceDb" name="referenceDb" type="text" placeholder="/path/to/simple_substance_database">
+                <button type="button" class="browse-btn" data-target="referenceDb">浏览</button>
+              </div>
+            </div>
+            <div class="field-row compact">
+              <label for="nSurfaces">表面数量</label>
+              <input id="nSurfaces" name="nSurfaces" type="number" min="1" step="1" value="2">
+            </div>
+          </section>
+
+          <section class="form-section hidden" data-show="adsorption">
+            <h3>吸附能输入</h3>
+            <div class="field-row">
+              <label for="adsSystem">吸附后体系</label>
+              <div class="path-control">
+                <input id="adsSystem" name="system" type="text" placeholder="/path/to/slab_plus_adsorbate">
+                <button type="button" class="browse-btn" data-target="adsSystem">浏览</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <label for="adsSlab">清洁表面</label>
+              <div class="path-control">
+                <input id="adsSlab" name="slab" type="text" placeholder="/path/to/clean_slab">
+                <button type="button" class="browse-btn" data-target="adsSlab">浏览</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <label for="adsorbate">吸附物</label>
+              <div class="path-control">
+                <input id="adsorbate" name="adsorbate" type="text" placeholder="/path/to/adsorbate">
+                <button type="button" class="browse-btn" data-target="adsorbate">浏览</button>
+              </div>
+            </div>
+            <div class="field-row compact">
+              <label for="nAdsorbate">吸附物数量</label>
+              <input id="nAdsorbate" name="nAdsorbate" type="number" min="1" step="1" value="1">
+            </div>
+          </section>
+
+          <section class="form-section hidden" data-show="doping">
+            <h3>掺杂形成能输入</h3>
+            <div class="field-row">
+              <label for="doped">掺杂体系</label>
+              <div class="path-control">
+                <input id="doped" name="doped" type="text" placeholder="/path/to/doped">
+                <button type="button" class="browse-btn" data-target="doped">浏览</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <label for="pristine">纯净结构</label>
+              <div class="path-control">
+                <input id="pristine" name="pristine" type="text" placeholder="/path/to/pristine">
+                <button type="button" class="browse-btn" data-target="pristine">浏览</button>
+              </div>
+            </div>
+            <div class="numeric-grid">
+              <div class="field-row">
+                <label for="nDopant">掺杂原子数</label>
+                <input id="nDopant" name="nDopant" type="number" min="1" step="1" value="1">
+              </div>
+              <div class="field-row">
+                <label for="muDopant">mu dopant</label>
+                <input id="muDopant" name="muDopant" type="number" step="0.000001" value="0">
+              </div>
+              <div class="field-row">
+                <label for="muHost">mu host</label>
+                <input id="muHost" name="muHost" type="number" step="0.000001" value="0">
+              </div>
+              <div class="field-row">
+                <label for="chargeState">电荷态 q</label>
+                <input id="chargeState" name="chargeState" type="number" step="1" value="0">
+              </div>
+              <div class="field-row">
+                <label for="efermi">E Fermi</label>
+                <input id="efermi" name="efermi" type="number" step="0.000001" value="0">
+              </div>
+              <div class="field-row">
+                <label for="correction">E corr</label>
+                <input id="correction" name="correction" type="number" step="0.000001" value="0">
+              </div>
+            </div>
+          </section>
+
+          <section class="form-section">
+            <h3>输出</h3>
+            <div class="field-row">
+              <label for="csvPath">CSV 输出路径</label>
+              <div class="path-control">
+                <input id="csvPath" name="csvPath" type="text" placeholder="/path/to/results.csv">
+                <button type="button" class="browse-btn" data-target="csvPath">浏览</button>
+              </div>
+            </div>
+            <div class="field-row">
+              <label for="jsonPath">JSON 输出路径</label>
+              <div class="path-control">
+                <input id="jsonPath" name="jsonPath" type="text" placeholder="/path/to/results.json">
+                <button type="button" class="browse-btn" data-target="jsonPath">浏览</button>
+              </div>
+            </div>
+          </section>
+
+          <div class="action-row">
+            <button type="submit" class="primary">运行计算</button>
+            <button type="button" id="resetForm" class="secondary">恢复默认</button>
+          </div>
+        </form>
+
+        <section class="results-area">
+          <div class="results-head">
+            <div>
+              <p class="eyebrow">Results</p>
+              <h3>计算结果</h3>
+            </div>
+            <div class="summary" id="summaryText">等待计算</div>
+          </div>
+          <div id="savedPaths" class="saved-paths"></div>
+          <div class="table-wrap">
+            <table id="resultsTable">
+              <thead></thead>
+              <tbody>
+                <tr><td class="empty">暂无结果</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="browserDialog">
+      <div class="dialog-head">
+        <div>
+          <p class="eyebrow">Path browser</p>
+          <h3>选择路径</h3>
+        </div>
+        <button type="button" id="closeBrowser" class="icon-button" aria-label="关闭">X</button>
+      </div>
+      <div class="browser-path">
+        <input id="browserPath" type="text">
+        <button type="button" id="goPath">打开</button>
+        <button type="button" id="choosePath">选择当前路径</button>
+      </div>
+      <div id="quickRoots" class="quick-roots"></div>
+      <div id="browserList" class="browser-list"></div>
+    </dialog>
+
+    <script src="/app.js"></script>
+  </body>
+</html>

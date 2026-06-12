@@ -2417,6 +2417,35 @@ def add_ai_subparser(subparsers):
 
 
 # ============================================================================
+# 子命令: ui
+# ============================================================================
+
+def cmd_ui(args):
+    """启动本地 Web UI / Start local Web UI."""
+    from matkit.ui import run_ui_server
+
+    run_ui_server(
+        host=args.host,
+        port=args.port,
+        open_browser=args.open,
+        quiet=args.quiet,
+    )
+
+
+def add_ui_subparser(subparsers):
+    """添加 ui 子命令解析器 / Add UI subcommand parser."""
+    parser = subparsers.add_parser(
+        "ui",
+        help="启动点击式 Web 界面 / Start the local web interface",
+        description="启动 MatKit 本地能量分析 Web 工作台",
+    )
+    parser.add_argument("--host", default="127.0.0.1", help="监听地址 (默认: 127.0.0.1) / Host")
+    parser.add_argument("--port", type=int, default=8765, help="端口 (默认: 8765) / Port")
+    parser.add_argument("--open", action="store_true", help="启动后尝试打开浏览器 / Open browser after start")
+    parser.add_argument("--quiet", action="store_true", help="减少 HTTP 请求日志 / Reduce request logging")
+
+
+# ============================================================================
 # 主入口 / Main Entry Point
 # ============================================================================
 
@@ -2460,6 +2489,7 @@ def build_parser():
     add_charge_subparser(subparsers)
     add_adsorption_subparser(subparsers)
     add_ai_subparser(subparsers)
+    add_ui_subparser(subparsers)
 
     return parser
 
@@ -2523,6 +2553,8 @@ def main(argv=None):
                 parser.parse_args([args.command, "-h"])
                 return
             cmd_ai(args)
+        elif args.command == "ui":
+            cmd_ui(args)
         else:
             parser.print_help()
     except KeyboardInterrupt:
