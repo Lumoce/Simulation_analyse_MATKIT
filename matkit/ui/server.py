@@ -27,7 +27,7 @@ from matkit.energy import (
     iter_calculation_directories,
     read_calculation_energy,
 )
-from matkit.parsers import expand_atomic_elements, read_poscar
+from matkit.parsers import read_poscar
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -204,7 +204,7 @@ def _read_atom_element(path, atom_index):
     if structure_file is None:
         raise FileNotFoundError(f"未找到 POSCAR/CONTCAR: {path}")
     data = read_poscar(structure_file)
-    atom_elements = expand_atomic_elements(data["elements"], data["n_atoms"])
+    atom_elements = data["atom_elements"]
     if atom_index > len(atom_elements):
         raise ValueError(
             f"原子序号 {atom_index} 超出结构原子总数 {len(atom_elements)}: {structure_file}"

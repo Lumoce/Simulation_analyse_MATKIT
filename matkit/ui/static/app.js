@@ -49,14 +49,14 @@ function syncMode() {
     doping: {
       initial: "掺杂前初态目录",
       final: "掺杂后终态目录",
-      hint: "掺杂能会从终态 POSCAR 的 dopant 原子序号识别 dopant 元素，从初态 POSCAR 的 host 原子序号识别 host 元素，并自动读取单质库能量。",
+      hint: "掺杂能会按 VESTA/POSCAR 的 Atom 序号，从终态识别 dopant 元素、从初态识别 host 元素，并自动读取单质库能量。",
       finalPlaceholder: "/path/to/doped_state_or_task_parent",
       initialPlaceholder: "/path/to/pristine_state",
     },
     defect: {
       initial: "缺陷前初态目录",
       final: "缺陷后终态目录",
-      hint: "缺陷能会从初态 POSCAR 的原子序号识别被移除元素，并自动读取单质库能量。",
+      hint: "缺陷能会按 VESTA/POSCAR 的 Atom 序号，从初态识别被移除元素，并自动读取单质库能量。",
       finalPlaceholder: "/path/to/defect_state_or_task_parent",
       initialPlaceholder: "/path/to/pristine_state",
     },

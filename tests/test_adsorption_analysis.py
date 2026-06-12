@@ -1,4 +1,5 @@
 from pathlib import Path
+import tempfile
 import unittest
 
 import numpy as np
@@ -20,6 +21,34 @@ class AdsorptionAnalysisTests(unittest.TestCase):
         self.assertEqual(data["atom_elements"][:4], ["Cu", "Cu", "Cu", "Cu"])
         self.assertEqual(data["atom_elements"][7:11], ["O", "O", "O", "O"])
         self.assertEqual(data["atom_elements"][11], "S")
+
+    def test_read_poscar_preserves_duplicate_species_blocks(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "POSCAR"
+            path.write_text(
+                "\n".join([
+                    "duplicate species",
+                    "1.0",
+                    "1 0 0",
+                    "0 1 0",
+                    "0 0 1",
+                    "Cr Zr Cr O",
+                    "2 1 2 1",
+                    "Direct",
+                    "0 0 0",
+                    "0 0 0",
+                    "0 0 0",
+                    "0 0 0",
+                    "0 0 0",
+                    "0 0 0",
+                ])
+                + "\n"
+            )
+            data = read_poscar(path)
+
+        self.assertEqual(data["n_atoms"], {"Cr": 4, "Zr": 1, "O": 1})
+        self.assertEqual(data["atom_elements"], ["Cr", "Cr", "Zr", "Cr", "Cr", "O"])
+        self.assertEqual(data["atom_elements"][2], "Zr")
 
     def test_so4_cu2o_key_metrics(self):
         result = analyze_so4_cu2o(str(EXAMPLE_POSCAR))

@@ -42,6 +42,20 @@ def expand_atomic_elements(elements, n_atoms):
     list of str
         Element label for every atom in coordinate order.
     """
+    if not isinstance(n_atoms, dict):
+        if len(elements) != len(n_atoms):
+            raise ValueError("元素名称数量与原子数数量不匹配")
+        atom_elements = []
+        for elem, count in zip(elements, n_atoms):
+            atom_elements.extend([elem] * int(count))
+        return atom_elements
+
+    if len(set(elements)) != len(elements):
+        raise ValueError(
+            "元素列表中存在重复元素，无法仅根据 n_atoms 字典恢复坐标块顺序；"
+            "请使用 read_poscar 返回的 atom_elements。"
+        )
+
     atom_elements = []
     for elem in elements:
         if elem not in n_atoms:
@@ -202,11 +216,16 @@ def read_poscar(filepath):
             f"元素名称数量 ({len(elements)}) 与原子数行数量 ({len(n_atoms_list)}) 不匹配"
         )
 
-    # 构建 n_atoms 字典
+    # 构建 n_atoms 字典。POSCAR 有时会出现重复元素块，例如
+    # ``Cr Zr Cr O``，此时成分需要合并，但原子序号必须保留坐标块顺序。
     n_atoms = {}
+    species_counts = []
+    atom_elements = []
     for elem, count in zip(elements, n_atoms_list):
-        n_atoms[elem] = count
-    atom_elements = expand_atomic_elements(elements, n_atoms)
+        count = int(count)
+        n_atoms[elem] = n_atoms.get(elem, 0) + count
+        species_counts.append({"element": elem, "count": count})
+        atom_elements.extend([elem] * count)
 
     # ---- 可选的 Selective Dynamics 行 ----
     line_idx += 1
@@ -270,6 +289,7 @@ def read_poscar(filepath):
         "lattice": lattice,
         "elements": elements,
         "n_atoms": n_atoms,
+        "species_counts": species_counts,
         "atom_elements": atom_elements,
         "total_atoms": total_atoms,
         "coords_frac": coords_frac,
@@ -319,17 +339,21 @@ def write_poscar(filepath, data, coord_type="direct"):
     if lattice.shape != (3, 3):
         raise ValueError(f"晶格向量矩阵形状应为 (3,3)，当前为 {lattice.shape}")
 
-    elements = data["elements"]
     n_atoms = data["n_atoms"]
 
-    # 验证 elements 和 n_atoms 一致性
-    n_atoms_list = []
-    for elem in elements:
-        if elem not in n_atoms:
-            raise ValueError(
-                f"元素 '{elem}' 不在 n_atoms 字典中"
-            )
-        n_atoms_list.append(n_atoms[elem])
+    if "species_counts" in data:
+        elements = [item["element"] for item in data["species_counts"]]
+        n_atoms_list = [int(item["count"]) for item in data["species_counts"]]
+    else:
+        elements = data["elements"]
+        # 验证 elements 和 n_atoms 一致性
+        n_atoms_list = []
+        for elem in elements:
+            if elem not in n_atoms:
+                raise ValueError(
+                    f"元素 '{elem}' 不在 n_atoms 字典中"
+                )
+            n_atoms_list.append(n_atoms[elem])
 
     total_atoms = sum(n_atoms_list)
     comment = data.get("comment", "POSCAR")
