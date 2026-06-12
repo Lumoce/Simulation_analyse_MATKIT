@@ -336,7 +336,7 @@ def _cmd_energy_surface(args):
     """
     表面能计算 / Surface energy calculation.
 
-    默认从单质库读取元素化学势，计算不按面积归一的表面过剩能。
+    默认从单质库读取元素化学势，计算不按面积归一的表面能。
     如果显式提供 --bulk，则保留旧的 bulk/area 表面能计算方式。
     """
     if args.bulk:
@@ -345,7 +345,7 @@ def _cmd_energy_surface(args):
 
     from matkit.energy import calc_surface_excess_energy_from_directory
 
-    print(color_header(">>> 表面过剩能计算 / Surface Excess Energy Calculation"))
+    print(color_header(">>> 表面能计算 / Surface Energy Calculation"))
     print(f"  板模型路径:      {args.slab}")
     print(f"  单质库路径:      {args.reference_db}")
     print(f"  表面数量:        {args.n_surfaces}")
@@ -358,7 +358,7 @@ def _cmd_energy_surface(args):
             n_surfaces=args.n_surfaces,
         )
 
-        print(color_header("=== 表面过剩能结果 / Surface Excess Energy Results ==="))
+        print(color_header("=== 表面能结果 / Surface Energy Results ==="))
         print()
         print_kv("Case", result["label"])
         if result["task_number"] is not None:
@@ -548,7 +548,7 @@ def _cmd_energy_surface_batch(args):
     """
     from matkit.energy import calc_surface_excess_energies_batch
 
-    print(color_header(">>> 批量表面过剩能计算 / Batch Surface Excess Energy Calculation"))
+    print(color_header(">>> 批量表面能计算 / Batch Surface Energy Calculation"))
     print(f"  根目录:          {args.root}")
     print(f"  单质库路径:      {args.reference_db}")
     print(f"  表面数量:        {args.n_surfaces}")
@@ -814,7 +814,7 @@ def add_energy_subparser(subparsers):
         "surface",
         help="计算表面能 / Calculate surface energy",
         description=(
-            "默认从单质库读取元素化学势，计算不按面积归一的表面过剩能；"
+            "默认从单质库读取元素化学势，计算不按面积归一的表面能；"
             "提供 --bulk 时使用旧的面积归一表面能公式"
         ),
     )
@@ -829,7 +829,7 @@ def add_energy_subparser(subparsers):
     # energy surface-batch
     p_surface_batch = subparsers_energy.add_parser(
         "surface-batch",
-        help="批量计算表面过剩能 / Batch-calculate surface excess energies",
+        help="批量计算表面能 / Batch-calculate surface energies",
         description="扫描根目录下所有包含 POSCAR 和 OUTCAR/OSZICAR/log 的计算文件夹",
     )
     p_surface_batch.add_argument("root", help="表面能计算结果根目录，如 Surface_energy / Surface calculation root")

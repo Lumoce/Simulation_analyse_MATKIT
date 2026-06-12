@@ -20,29 +20,24 @@
         <section class="panel">
           <label for="energyType">能量类型</label>
           <select id="energyType">
-            <option value="surface_batch">表面过剩能 - 批量</option>
-            <option value="surface_single">表面过剩能 - 单个</option>
+            <option value="surface">表面能</option>
             <option value="adsorption">吸附能</option>
-            <option value="doping">掺杂形成能</option>
+            <option value="doping">缺陷/掺杂形成能</option>
           </select>
         </section>
 
         <section class="panel stack">
-          <div class="mode-note" data-mode="surface_batch">
-            <strong>批量表面过剩能</strong>
-            <span>扫描同一根目录下所有包含 POSCAR 和 OUTCAR/OSZICAR/log 的计算文件夹。</span>
-          </div>
-          <div class="mode-note hidden" data-mode="surface_single">
-            <strong>单个表面过剩能</strong>
-            <span>选择一个 slab 计算目录，单质化学势由参考库自动读取。</span>
+          <div class="mode-note" data-mode="surface">
+            <strong>表面能</strong>
+            <span>选择表面终态目录，并由单质库提供元素参考能。若目录内只有一个计算结果则自动单个计算，若包含多个 task 目录则自动批量计算。</span>
           </div>
           <div class="mode-note hidden" data-mode="adsorption">
             <strong>吸附能</strong>
-            <span>选择吸附后体系、清洁表面和独立吸附物的计算结果。</span>
+            <span>选择吸附前初态、吸附后终态和独立吸附物能量。初态目录可以直接引用前一步终态，不需要复制文件。</span>
           </div>
           <div class="mode-note hidden" data-mode="doping">
-            <strong>掺杂形成能</strong>
-            <span>选择掺杂体系和纯净结构，并输入化学势与电荷项。</span>
+            <strong>缺陷/掺杂形成能</strong>
+            <span>选择缺陷前初态和缺陷后终态，并输入化学势、电荷态和校正项。</span>
           </div>
         </section>
       </aside>
@@ -57,35 +52,32 @@
         </header>
 
         <form id="energyForm" class="form-grid">
-          <section class="form-section" data-show="surface_batch">
-            <h3>批量计算目录</h3>
+          <section class="form-section">
+            <h3>状态目录</h3>
             <div class="field-row">
-              <label for="surfaceRoot">Surface_energy 根目录</label>
+              <label for="initialState" id="initialStateLabel">初态目录（表面能可空）</label>
               <div class="path-control">
-                <input id="surfaceRoot" name="root" type="text" placeholder="/path/to/Surface_energy">
-                <button type="button" class="browse-btn" data-target="surfaceRoot">浏览</button>
+                <input id="initialState" name="initialPath" type="text" placeholder="表面能可留空；吸附/缺陷能请选择初态目录">
+                <button type="button" class="browse-btn" data-target="initialState">选择</button>
               </div>
             </div>
-          </section>
-
-          <section class="form-section hidden" data-show="surface_single">
-            <h3>单个 slab 目录</h3>
             <div class="field-row">
-              <label for="surfaceSlab">Slab 计算目录或能量文件</label>
+              <label for="finalState" id="finalStateLabel">终态/结果目录</label>
               <div class="path-control">
-                <input id="surfaceSlab" name="slab" type="text" placeholder="/path/to/task.1_top">
-                <button type="button" class="browse-btn" data-target="surfaceSlab">浏览</button>
+                <input id="finalState" name="finalPath" type="text" placeholder="/path/to/final_or_results_directory">
+                <button type="button" class="browse-btn" data-target="finalState">选择</button>
               </div>
             </div>
+            <p class="hint" id="stateHint">表面能只需要终态目录和单质参考库；初态目录可以留空。</p>
           </section>
 
-          <section class="form-section" data-show="surface_batch surface_single">
+          <section class="form-section" data-show="surface">
             <h3>单质参考库</h3>
             <div class="field-row">
               <label for="referenceDb">simple_substance_database</label>
               <div class="path-control">
                 <input id="referenceDb" name="referenceDb" type="text" placeholder="/path/to/simple_substance_database">
-                <button type="button" class="browse-btn" data-target="referenceDb">浏览</button>
+                <button type="button" class="browse-btn" data-target="referenceDb">选择</button>
               </div>
             </div>
             <div class="field-row compact">
@@ -95,26 +87,12 @@
           </section>
 
           <section class="form-section hidden" data-show="adsorption">
-            <h3>吸附能输入</h3>
-            <div class="field-row">
-              <label for="adsSystem">吸附后体系</label>
-              <div class="path-control">
-                <input id="adsSystem" name="system" type="text" placeholder="/path/to/slab_plus_adsorbate">
-                <button type="button" class="browse-btn" data-target="adsSystem">浏览</button>
-              </div>
-            </div>
-            <div class="field-row">
-              <label for="adsSlab">清洁表面</label>
-              <div class="path-control">
-                <input id="adsSlab" name="slab" type="text" placeholder="/path/to/clean_slab">
-                <button type="button" class="browse-btn" data-target="adsSlab">浏览</button>
-              </div>
-            </div>
+            <h3>吸附物参考</h3>
             <div class="field-row">
               <label for="adsorbate">吸附物</label>
               <div class="path-control">
                 <input id="adsorbate" name="adsorbate" type="text" placeholder="/path/to/adsorbate">
-                <button type="button" class="browse-btn" data-target="adsorbate">浏览</button>
+                <button type="button" class="browse-btn" data-target="adsorbate">选择</button>
               </div>
             </div>
             <div class="field-row compact">
@@ -124,21 +102,7 @@
           </section>
 
           <section class="form-section hidden" data-show="doping">
-            <h3>掺杂形成能输入</h3>
-            <div class="field-row">
-              <label for="doped">掺杂体系</label>
-              <div class="path-control">
-                <input id="doped" name="doped" type="text" placeholder="/path/to/doped">
-                <button type="button" class="browse-btn" data-target="doped">浏览</button>
-              </div>
-            </div>
-            <div class="field-row">
-              <label for="pristine">纯净结构</label>
-              <div class="path-control">
-                <input id="pristine" name="pristine" type="text" placeholder="/path/to/pristine">
-                <button type="button" class="browse-btn" data-target="pristine">浏览</button>
-              </div>
-            </div>
+            <h3>缺陷/掺杂参数</h3>
             <div class="numeric-grid">
               <div class="field-row">
                 <label for="nDopant">掺杂原子数</label>
@@ -173,14 +137,14 @@
               <label for="csvPath">CSV 输出路径</label>
               <div class="path-control">
                 <input id="csvPath" name="csvPath" type="text" placeholder="/path/to/results.csv">
-                <button type="button" class="browse-btn" data-target="csvPath">浏览</button>
+                <button type="button" class="browse-btn" data-target="csvPath">选择</button>
               </div>
             </div>
             <div class="field-row">
               <label for="jsonPath">JSON 输出路径</label>
               <div class="path-control">
                 <input id="jsonPath" name="jsonPath" type="text" placeholder="/path/to/results.json">
-                <button type="button" class="browse-btn" data-target="jsonPath">浏览</button>
+                <button type="button" class="browse-btn" data-target="jsonPath">选择</button>
               </div>
             </div>
           </section>

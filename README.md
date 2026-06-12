@@ -39,7 +39,7 @@ python -m matkit ui --port 8765
 http://127.0.0.1:8765
 ```
 
-该界面提供能量类型下拉选择、路径输入框、目录浏览弹窗、结果表格，以及 CSV/JSON 输出路径配置。适合批量表面过剩能、单个表面过剩能、吸附能和掺杂形成能的日常后处理。
+该界面提供能量类型下拉选择、初态/终态目录选择、资源管理器式目录浏览、结果表格，以及 CSV/JSON 输出路径配置。适合表面能、吸附能和缺陷/掺杂形成能的日常后处理；同一个计算目录可以被直接引用为上一步终态或下一步初态，不需要复制文件。
 
 导出结构化结果：
 
@@ -60,9 +60,9 @@ python -m matkit adsorption geometry CONTCAR \
   --json analysis_outputs/inhibitor_geometry.json
 ```
 
-## 表面过剩能自动计算
+## 表面能自动计算
 
-新版 `energy surface` 默认使用单质库中的元素化学势，而不是用体相能量并按面积归一。计算式为：
+新版 `energy surface` 默认使用单质库中的元素化学势，而不是用体相能量并按面积归一。UI 中统一命名为“表面能”，计算式为：
 
 ```text
 E_surface = (E_slab - sum_i n_i * mu_i) / n_surfaces
@@ -90,7 +90,7 @@ Surface_energy/
     OUTCAR
 ```
 
-单个 slab：
+选择一个 slab 目录时执行单个计算：
 
 ```bash
 python -m matkit energy surface \
@@ -100,7 +100,7 @@ python -m matkit energy surface \
   --csv analysis_outputs/surface_task1_top.csv
 ```
 
-批量 slab：
+选择包含多个 `task.*` 计算结果的父目录时执行批量计算：
 
 ```bash
 python -m matkit energy surface-batch Surface_energy \

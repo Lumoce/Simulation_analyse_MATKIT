@@ -31,6 +31,35 @@ function syncMode() {
   $$(".mode-note").forEach((note) => {
     note.classList.toggle("hidden", note.dataset.mode !== mode);
   });
+  const labels = {
+    surface: {
+      initial: "初态目录（可空）",
+      final: "表面终态/结果目录",
+      hint: "表面能只需要终态目录和单质参考库；初态目录可以留空。若终态目录本身是一个计算结果则单个计算，若其中包含多个 task 计算目录则自动批量计算。",
+      finalPlaceholder: "/path/to/surface_final_or_results_directory",
+      initialPlaceholder: "可留空",
+    },
+    adsorption: {
+      initial: "吸附前初态目录",
+      final: "吸附后终态目录",
+      hint: "吸附能 = 终态能量 - 初态能量 - n * 吸附物能量。初态可以直接选择前一步计算的终态目录。",
+      finalPlaceholder: "/path/to/slab_plus_adsorbate",
+      initialPlaceholder: "/path/to/clean_slab",
+    },
+    doping: {
+      initial: "缺陷前初态目录",
+      final: "缺陷/掺杂后终态目录",
+      hint: "缺陷/掺杂形成能使用显式选择的初态和终态目录，不需要复制同一结构到多个分类文件夹。",
+      finalPlaceholder: "/path/to/doped_or_defective_state",
+      initialPlaceholder: "/path/to/pristine_state",
+    },
+  };
+  const config = labels[mode] || labels.surface;
+  $("#initialStateLabel").textContent = config.initial;
+  $("#finalStateLabel").textContent = config.final;
+  $("#stateHint").textContent = config.hint;
+  $("#initialState").placeholder = config.initialPlaceholder;
+  $("#finalState").placeholder = config.finalPlaceholder;
 }
 
 async function apiGet(url) {
@@ -71,24 +100,18 @@ function formPayload() {
   const mode = currentMode();
   const payload = {
     energyType: mode,
+    initialPath: $("#initialState").value,
+    finalPath: $("#finalState").value,
     referenceDb: $("#referenceDb").value,
     nSurfaces: $("#nSurfaces").value,
     csvPath: $("#csvPath").value,
     jsonPath: $("#jsonPath").value,
   };
 
-  if (mode === "surface_batch") {
-    payload.root = $("#surfaceRoot").value;
-  } else if (mode === "surface_single") {
-    payload.slab = $("#surfaceSlab").value;
-  } else if (mode === "adsorption") {
-    payload.system = $("#adsSystem").value;
-    payload.slab = $("#adsSlab").value;
-    payload.adsorbate = $("#adsorbate").value;
+  if (mode === "adsorption") {
+    payload.adsorbatePath = $("#adsorbate").value;
     payload.nAdsorbate = $("#nAdsorbate").value;
   } else if (mode === "doping") {
-    payload.doped = $("#doped").value;
-    payload.pristine = $("#pristine").value;
     payload.nDopant = $("#nDopant").value;
     payload.muDopant = $("#muDopant").value;
     payload.muHost = $("#muHost").value;
@@ -119,7 +142,7 @@ function preferredColumns(rows) {
     "task_number",
     "task_suffix",
     "status",
-    "surface_excess_energy_eV_per_surface",
+    "surface_energy_eV_per_surface",
     "adsorption_energy_eV",
     "formation_energy_eV",
     "excess_energy_eV",

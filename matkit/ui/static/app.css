@@ -180,6 +180,12 @@ label {
   gap: 8px;
 }
 
+.hint {
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+}
+
 .field-row.compact {
   max-width: 220px;
 }

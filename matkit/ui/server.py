@@ -21,6 +21,7 @@ from matkit.energy import (
     calc_surface_excess_energies_batch,
     calc_surface_excess_energy_from_directory,
     find_energy_file,
+    find_structure_file,
     read_calculation_energy,
 )
 
@@ -87,7 +88,7 @@ def _write_csv_file(path, rows):
         "task_number",
         "task_suffix",
         "status",
-        "surface_excess_energy_eV_per_surface",
+        "surface_energy_eV_per_surface",
         "adsorption_energy_eV",
         "formation_energy_eV",
         "excess_energy_eV",
@@ -108,20 +109,62 @@ def _write_csv_file(path, rows):
     return path
 
 
-def _calculate_surface_batch(payload):
-    root = _resolve_path(payload.get("root"))
+def _with_surface_alias(row):
+    if "surface_excess_energy_eV_per_surface" in row:
+        row["surface_energy_eV_per_surface"] = row["surface_excess_energy_eV_per_surface"]
+        del row["surface_excess_energy_eV_per_surface"]
+    return row
+
+
+def _is_calculation_path(path):
+    if os.path.isfile(path):
+        return find_energy_file(path) is not None
+    return find_structure_file(path) is not None and find_energy_file(path) is not None
+
+
+def _calculate_surface(payload):
+    final_path = _resolve_path(
+        payload.get("finalPath")
+        or payload.get("root")
+        or payload.get("slab")
+    )
+    initial_path = _resolve_path(payload.get("initialPath"))
     reference_db = _resolve_path(payload.get("referenceDb")) or str(PROJECT_ROOT / "simple_substance_database")
     n_surfaces = int(payload.get("nSurfaces") or 2)
     strict = bool(payload.get("strict"))
-    results = calc_surface_excess_energies_batch(
-        root_dir=root,
-        simple_substance_db=reference_db,
-        n_surfaces=n_surfaces,
-        strict=strict,
-    )
+
+    if not final_path:
+        raise ValueError("请选择表面终态/结果目录。")
+
+    if _is_calculation_path(final_path):
+        result = calc_surface_excess_energy_from_directory(
+            slab_path=final_path,
+            simple_substance_db=reference_db,
+            n_surfaces=n_surfaces,
+        )
+        result.update({
+            "status": "ok",
+            "initial_path": initial_path,
+            "initial_role": "not_required" if not initial_path else "user_reference",
+        })
+        results = [_with_surface_alias(result)]
+        kind = "surface_single"
+    else:
+        results = calc_surface_excess_energies_batch(
+            root_dir=final_path,
+            simple_substance_db=reference_db,
+            n_surfaces=n_surfaces,
+            strict=strict,
+        )
+        for row in results:
+            row["initial_path"] = initial_path
+            row["initial_role"] = "not_required" if not initial_path else "user_reference"
+            _with_surface_alias(row)
+        kind = "surface_batch"
+
     ok_count = sum(1 for row in results if row.get("status") == "ok")
     return {
-        "kind": "surface_batch",
+        "kind": kind,
         "summary": {
             "total": len(results),
             "ok": ok_count,
@@ -131,27 +174,10 @@ def _calculate_surface_batch(payload):
     }
 
 
-def _calculate_surface_single(payload):
-    slab = _resolve_path(payload.get("slab"))
-    reference_db = _resolve_path(payload.get("referenceDb")) or str(PROJECT_ROOT / "simple_substance_database")
-    n_surfaces = int(payload.get("nSurfaces") or 2)
-    result = calc_surface_excess_energy_from_directory(
-        slab_path=slab,
-        simple_substance_db=reference_db,
-        n_surfaces=n_surfaces,
-    )
-    result["status"] = "ok"
-    return {
-        "kind": "surface_single",
-        "summary": {"total": 1, "ok": 1, "errors": 0},
-        "results": [result],
-    }
-
-
 def _calculate_adsorption(payload):
-    system = _resolve_path(payload.get("system"))
-    slab = _resolve_path(payload.get("slab"))
-    adsorbate = _resolve_path(payload.get("adsorbate"))
+    system = _resolve_path(payload.get("finalPath") or payload.get("system"))
+    slab = _resolve_path(payload.get("initialPath") or payload.get("slab"))
+    adsorbate = _resolve_path(payload.get("adsorbatePath") or payload.get("adsorbate"))
     n_ads = int(payload.get("nAdsorbate") or 1)
     E_system, system_energy_file, system_converged = _energy_from_path(system)
     E_slab, slab_energy_file, slab_converged = _energy_from_path(slab)
@@ -178,8 +204,8 @@ def _calculate_adsorption(payload):
 
 
 def _calculate_doping(payload):
-    doped = _resolve_path(payload.get("doped"))
-    pristine = _resolve_path(payload.get("pristine"))
+    doped = _resolve_path(payload.get("finalPath") or payload.get("doped"))
+    pristine = _resolve_path(payload.get("initialPath") or payload.get("pristine"))
     n_dopant = int(payload.get("nDopant") or 1)
     mu_dopant = float(payload.get("muDopant") or 0)
     mu_host = float(payload.get("muHost") or 0)
@@ -217,10 +243,8 @@ def _calculate_doping(payload):
 
 def calculate_energy(payload):
     energy_type = payload.get("energyType")
-    if energy_type == "surface_batch":
-        data = _calculate_surface_batch(payload)
-    elif energy_type == "surface_single":
-        data = _calculate_surface_single(payload)
+    if energy_type in {"surface", "surface_batch", "surface_single"}:
+        data = _calculate_surface(payload)
     elif energy_type == "adsorption":
         data = _calculate_adsorption(payload)
     elif energy_type == "doping":
