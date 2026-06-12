@@ -1,0 +1,33 @@
+{
+  "description": "Default bond/contact cutoffs in Angstrom. Override from CLI or Python for each chemistry.",
+  "internal_bonds": {
+    "H-H": 0.9,
+    "C-H": 1.25,
+    "N-H": 1.25,
+    "O-H": 1.25,
+    "S-H": 1.55,
+    "C-C": 1.85,
+    "C-N": 1.65,
+    "C-O": 1.65,
+    "C-S": 1.95,
+    "N-N": 1.6,
+    "N-O": 1.65,
+    "N-S": 1.9,
+    "O-O": 1.75,
+    "S-O": 1.9,
+    "S-S": 2.2,
+    "P-O": 1.9,
+    "P-S": 2.15,
+    "Cl-C": 2.0
+  },
+  "surface_contacts": {
+    "O-Cu": 2.5,
+    "S-Cu": 2.5,
+    "N-Cu": 2.4,
+    "C-Cu": 2.3,
+    "O-Fe": 2.4,
+    "N-Fe": 2.3,
+    "S-Fe": 2.5,
+    "O-Zn": 2.4
+  }
+}
