@@ -197,6 +197,10 @@ label {
   max-width: 220px;
 }
 
+.output-section {
+  min-height: 260px;
+}
+
 .numeric-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(120px, 1fr));
@@ -264,6 +268,7 @@ button:hover {
 
 .results-area {
   padding: 18px;
+  min-height: 430px;
   min-width: 0;
 }
 
@@ -287,9 +292,32 @@ button:hover {
   background: rgba(123, 216, 143, 0.08);
 }
 
+.result-meta {
+  display: grid;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid rgba(88, 213, 211, 0.28);
+  background: rgba(88, 213, 211, 0.06);
+  color: var(--soft);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.result-meta div {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+}
+
+.result-meta strong {
+  color: var(--cyan);
+}
+
 .table-wrap {
   margin-top: 14px;
   max-width: 100%;
+  min-height: 260px;
   overflow: auto;
   border: 1px solid var(--line);
 }

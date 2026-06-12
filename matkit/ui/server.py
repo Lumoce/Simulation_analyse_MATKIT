@@ -17,6 +17,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from matkit.energy import (
+    build_simple_substance_database,
     calc_adsorption_energy,
     calc_doping_energy,
     calc_surface_excess_energies_batch,
@@ -26,6 +27,7 @@ from matkit.energy import (
     iter_calculation_directories,
     read_calculation_energy,
 )
+from matkit.parsers import expand_atomic_elements, read_poscar
 
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -96,10 +98,10 @@ def _write_csv_file(path, rows):
         "excess_energy_eV",
         "energy_diff",
         "reference_energies",
-        "formula_terms",
         "E_slab",
         "E_slab_ads",
         "E_doped",
+        "E_defect",
         "error",
     ]
     headers = [key for key in preferred if key in headers] + [
@@ -117,11 +119,10 @@ def _with_surface_alias(row):
     if "surface_excess_energy_eV_per_surface" in row:
         row["surface_energy_eV_per_surface"] = row["surface_excess_energy_eV_per_surface"]
         del row["surface_excess_energy_eV_per_surface"]
-    row["formula_terms"] = "(E_slab - sum(n_i * mu_i)) / n_surfaces"
     terms = row.get("reference_terms") or []
     if terms:
         row["reference_energies"] = "; ".join(
-            f"{term.get('element')}: mu={term.get('mu_eV_per_atom'):.6f} eV/atom"
+            f"mu_{term.get('element')}"
             for term in terms
             if isinstance(term.get("mu_eV_per_atom"), (int, float))
         )
@@ -143,6 +144,78 @@ def _infer_task_identity(path):
     if match:
         return match.group(1), match.group(2).lstrip("._-")
     return None, ""
+
+
+def _parse_optional_float(payload, key):
+    value = payload.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return float(text)
+
+
+def _parse_optional_int(payload, key):
+    value = payload.get(key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return int(text)
+
+
+def _charge_inputs(payload):
+    charge = _parse_optional_int(payload, "chargeState")
+    efermi = _parse_optional_float(payload, "efermi")
+    correction = _parse_optional_float(payload, "correction")
+    uses_charge = any(value not in (None, 0, 0.0) for value in (charge, efermi, correction))
+    return uses_charge, int(charge or 0), float(efermi or 0.0), float(correction or 0.0)
+
+
+def _remove_charge_fields_if_unused(row, uses_charge):
+    if uses_charge:
+        return row
+    for key in ("charge_state", "efermi", "charge_correction_term", "correction"):
+        row.pop(key, None)
+    return row
+
+
+def _formula_with_optional_charge(base):
+    return f"{base} + q * E_fermi + E_corr"
+
+
+def _calculation_dirs_from_path(path):
+    if _is_calculation_path(path):
+        return [path]
+    calc_dirs = list(iter_calculation_directories(path))
+    return [
+        item for item in calc_dirs
+        if re.search(r"task[._-]*\d+", os.path.basename(os.path.normpath(item)), re.IGNORECASE)
+    ] or calc_dirs
+
+
+def _read_atom_element(path, atom_index):
+    atom_index = int(atom_index)
+    if atom_index <= 0:
+        raise ValueError(f"原子序号必须从 1 开始，但得到 {atom_index}。")
+    structure_file = find_structure_file(path)
+    if structure_file is None:
+        raise FileNotFoundError(f"未找到 POSCAR/CONTCAR: {path}")
+    data = read_poscar(structure_file)
+    atom_elements = expand_atomic_elements(data["elements"], data["n_atoms"])
+    if atom_index > len(atom_elements):
+        raise ValueError(
+            f"原子序号 {atom_index} 超出结构原子总数 {len(atom_elements)}: {structure_file}"
+        )
+    return atom_elements[atom_index - 1], structure_file
+
+
+def _reference_mu(references, element):
+    if element not in references:
+        raise ValueError(f"单质库中缺少元素 {element} 的参考能量。")
+    return float(references[element]["mu_eV_per_atom"])
 
 
 def _calculate_surface(payload):
@@ -188,6 +261,8 @@ def _calculate_surface(payload):
     ok_count = sum(1 for row in results if row.get("status") == "ok")
     return {
         "kind": kind,
+        "formula": "E_surface = (E_slab - sum(n_i * mu_i)) / n_surfaces",
+        "reference_summary": "mu_i from simple_substance_database",
         "summary": {
             "total": len(results),
             "ok": ok_count,
@@ -209,8 +284,7 @@ def _calculate_adsorption(payload):
     result.update({
         "status": "ok",
         "label": payload.get("label") or os.path.basename(os.path.normpath(system)),
-        "formula_terms": "E_final - E_initial - n_adsorbate * E_adsorbate",
-        "reference_energies": f"E_adsorbate={E_adsorbate:.6f} eV",
+        "reference_energies": "E_adsorbate",
         "system_path": system,
         "slab_path": slab,
         "adsorbate_path": adsorbate,
@@ -223,6 +297,8 @@ def _calculate_adsorption(payload):
     })
     return {
         "kind": "adsorption",
+        "formula": "E_ads = E_final - E_initial - n_adsorbate * E_adsorbate",
+        "reference_summary": "E_adsorbate from selected adsorbate calculation",
         "summary": {"total": 1, "ok": 1, "errors": 0},
         "results": [result],
     }
@@ -232,36 +308,36 @@ def _calculate_doping(payload):
     final_path = _resolve_path(payload.get("finalPath") or payload.get("doped"))
     pristine = _resolve_path(payload.get("initialPath") or payload.get("pristine"))
     n_dopant = int(payload.get("nDopant") or 1)
-    mu_dopant = float(payload.get("muDopant") or 0)
-    mu_host = float(payload.get("muHost") or 0)
-    charge = int(payload.get("chargeState") or 0)
-    efermi = float(payload.get("efermi") or 0)
-    correction = float(payload.get("correction") or 0)
+    dopant_atom_index = int(payload.get("dopantAtomIndex") or 0)
+    host_atom_index = int(payload.get("hostAtomIndex") or 0)
+    reference_db = _resolve_path(payload.get("referenceDb")) or str(PROJECT_ROOT / "simple_substance_database")
+    uses_charge, charge, efermi, correction = _charge_inputs(payload)
 
     if not final_path:
-        raise ValueError("请选择缺陷/掺杂后终态目录。")
+        raise ValueError("请选择掺杂后终态目录。")
     if not pristine:
-        raise ValueError("请选择缺陷前初态目录。")
+        raise ValueError("请选择掺杂前初态目录。")
+    if dopant_atom_index <= 0:
+        raise ValueError("请输入终态结构中的掺杂原子序号。")
+    if host_atom_index <= 0:
+        raise ValueError("请输入初态结构中的宿主元素原子序号。")
 
     E_pristine, pristine_energy_file, pristine_converged = _energy_from_path(pristine)
+    host_element, host_structure_file = _read_atom_element(pristine, host_atom_index)
+    references = build_simple_substance_database(reference_db)
+    mu_host = _reference_mu(references, host_element)
 
-    if _is_calculation_path(final_path):
-        doped_dirs = [final_path]
-    else:
-        doped_dirs = list(iter_calculation_directories(final_path))
-        doped_dirs = [
-            path for path in doped_dirs
-            if re.search(r"task[._-]*\d+", os.path.basename(os.path.normpath(path)), re.IGNORECASE)
-        ] or doped_dirs
+    doped_dirs = _calculation_dirs_from_path(final_path)
 
     if not doped_dirs:
         raise ValueError(f"未在终态目录下找到包含 POSCAR/CONTCAR 和 OUTCAR/log 的计算子目录: {final_path}")
 
     results = []
     for doped in doped_dirs:
-        task_number, task_suffix = _infer_task_identity(doped)
         try:
             E_doped, doped_energy_file, doped_converged = _energy_from_path(doped)
+            dopant_element, doped_structure_file = _read_atom_element(doped, dopant_atom_index)
+            mu_dopant = _reference_mu(references, dopant_element)
             result = calc_doping_energy(
                 E_doped=E_doped,
                 E_pristine=E_pristine,
@@ -272,26 +348,32 @@ def _calculate_doping(payload):
                 efermi=efermi,
                 correction=correction,
             )
+            _remove_charge_fields_if_unused(result, uses_charge)
             result.update({
                 "status": "ok",
-                "formula_terms": "E_final - E_initial - n_dopant * mu_dopant + n_host * mu_host + q * E_fermi + E_corr",
-                "reference_energies": f"mu_dopant={mu_dopant:.6f} eV/atom; mu_host={mu_host:.6f} eV/atom",
+                "dopant_element": dopant_element,
+                "host_element": host_element,
+                "dopant_atom_index": dopant_atom_index,
+                "host_atom_index": host_atom_index,
+                "reference_energies": f"mu_dopant({dopant_element}); mu_host({host_element})",
                 "doped_energy_file": doped_energy_file,
+                "doped_structure_file": doped_structure_file,
                 "pristine_energy_file": pristine_energy_file,
+                "pristine_structure_file": host_structure_file,
                 "doped_is_converged": doped_converged,
                 "pristine_is_converged": pristine_converged,
+                "reference_database": reference_db,
             })
         except Exception as exc:
             result = {
                 "status": "error",
-                "formula_terms": "E_final - E_initial - n_dopant * mu_dopant + n_host * mu_host + q * E_fermi + E_corr",
-                "reference_energies": f"mu_dopant={mu_dopant:.6f} eV/atom; mu_host={mu_host:.6f} eV/atom",
+                "host_element": host_element,
+                "host_atom_index": host_atom_index,
+                "reference_energies": f"mu_host({host_element})",
                 "error": str(exc),
             }
         result.update({
             "label": payload.get("label") or os.path.basename(os.path.normpath(doped)),
-            "task_number": task_number,
-            "task_suffix": task_suffix,
             "doped_path": doped,
             "pristine_path": pristine,
         })
@@ -300,6 +382,99 @@ def _calculate_doping(payload):
     ok_count = sum(1 for row in results if row.get("status") == "ok")
     return {
         "kind": "doping",
+        "formula": _formula_with_optional_charge(
+            "E_doping = E_final - E_initial - n_dopant * mu_dopant + n_host * mu_host"
+        ) if uses_charge else "E_doping = E_final - E_initial - n_dopant * mu_dopant + n_host * mu_host",
+        "reference_summary": "dopant/host elements are identified by atom index, then mu is read from simple_substance_database",
+        "summary": {"total": len(results), "ok": ok_count, "errors": len(results) - ok_count},
+        "results": results,
+    }
+
+
+def _calculate_defect(payload):
+    final_path = _resolve_path(payload.get("finalPath"))
+    pristine = _resolve_path(payload.get("initialPath"))
+    removed_atom_index = int(payload.get("removedAtomIndex") or 0)
+    n_removed = int(payload.get("nRemoved") or 1)
+    reference_db = _resolve_path(payload.get("referenceDb")) or str(PROJECT_ROOT / "simple_substance_database")
+    uses_charge, charge, efermi, correction = _charge_inputs(payload)
+
+    if not final_path:
+        raise ValueError("请选择缺陷后终态目录。")
+    if not pristine:
+        raise ValueError("请选择缺陷前初态目录。")
+    if removed_atom_index <= 0:
+        raise ValueError("请输入初态结构中被移除元素的原子序号。")
+    if n_removed <= 0:
+        raise ValueError("被移除原子数必须为正整数。")
+
+    E_pristine, pristine_energy_file, pristine_converged = _energy_from_path(pristine)
+    defect_element, pristine_structure_file = _read_atom_element(pristine, removed_atom_index)
+    references = build_simple_substance_database(reference_db)
+    mu_removed = _reference_mu(references, defect_element)
+    defect_dirs = _calculation_dirs_from_path(final_path)
+
+    if not defect_dirs:
+        raise ValueError(f"未在终态目录下找到包含 POSCAR/CONTCAR 和 OUTCAR/log 的计算子目录: {final_path}")
+
+    results = []
+    for defect_dir in defect_dirs:
+        try:
+            E_defect, defect_energy_file, defect_converged = _energy_from_path(defect_dir)
+            energy_diff = E_defect - E_pristine
+            chemical_potential_term = n_removed * mu_removed
+            charge_correction_term = charge * efermi + correction
+            formation_energy = energy_diff + chemical_potential_term + charge_correction_term
+            result = {
+                "status": "ok",
+                "formation_energy_eV": formation_energy,
+                "E_defect": E_defect,
+                "E_pristine": E_pristine,
+                "energy_diff": energy_diff,
+                "n_removed": n_removed,
+                "defect_element": defect_element,
+                "removed_atom_index": removed_atom_index,
+                "mu_removed": mu_removed,
+                "chemical_potential_term": chemical_potential_term,
+                "reference_energies": f"mu_removed({defect_element})",
+                "defect_energy_file": defect_energy_file,
+                "pristine_energy_file": pristine_energy_file,
+                "pristine_structure_file": pristine_structure_file,
+                "defect_is_converged": defect_converged,
+                "pristine_is_converged": pristine_converged,
+                "reference_database": reference_db,
+            }
+            if uses_charge:
+                result.update({
+                    "charge_state": charge,
+                    "efermi": efermi,
+                    "charge_correction_term": charge_correction_term,
+                    "correction": correction,
+                })
+            else:
+                result.pop("chemical_potential_term", None)
+        except Exception as exc:
+            result = {
+                "status": "error",
+                "defect_element": defect_element,
+                "removed_atom_index": removed_atom_index,
+                "reference_energies": f"mu_removed({defect_element})",
+                "error": str(exc),
+            }
+        result.update({
+            "label": payload.get("label") or os.path.basename(os.path.normpath(defect_dir)),
+            "defect_path": defect_dir,
+            "pristine_path": pristine,
+        })
+        results.append(result)
+
+    ok_count = sum(1 for row in results if row.get("status") == "ok")
+    return {
+        "kind": "defect",
+        "formula": _formula_with_optional_charge(
+            "E_defect = E_final - E_initial + n_removed * mu_removed"
+        ) if uses_charge else "E_defect = E_final - E_initial + n_removed * mu_removed",
+        "reference_summary": "removed element is identified by atom index in the initial structure, then mu is read from simple_substance_database",
         "summary": {"total": len(results), "ok": ok_count, "errors": len(results) - ok_count},
         "results": results,
     }
@@ -313,6 +488,8 @@ def calculate_energy(payload):
         data = _calculate_adsorption(payload)
     elif energy_type == "doping":
         data = _calculate_doping(payload)
+    elif energy_type == "defect":
+        data = _calculate_defect(payload)
     else:
         raise ValueError(f"未知能量类型: {energy_type}")
 

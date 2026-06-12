@@ -47,10 +47,17 @@ function syncMode() {
       initialPlaceholder: "/path/to/clean_slab",
     },
     doping: {
+      initial: "掺杂前初态目录",
+      final: "掺杂后终态目录",
+      hint: "掺杂能会从终态 POSCAR 的 dopant 原子序号识别 dopant 元素，从初态 POSCAR 的 host 原子序号识别 host 元素，并自动读取单质库能量。",
+      finalPlaceholder: "/path/to/doped_state_or_task_parent",
+      initialPlaceholder: "/path/to/pristine_state",
+    },
+    defect: {
       initial: "缺陷前初态目录",
-      final: "缺陷/掺杂后终态目录",
-      hint: "缺陷/掺杂形成能使用显式选择的初态和终态目录，不需要复制同一结构到多个分类文件夹。",
-      finalPlaceholder: "/path/to/doped_or_defective_state",
+      final: "缺陷后终态目录",
+      hint: "缺陷能会从初态 POSCAR 的原子序号识别被移除元素，并自动读取单质库能量。",
+      finalPlaceholder: "/path/to/defect_state_or_task_parent",
       initialPlaceholder: "/path/to/pristine_state",
     },
   };
@@ -113,8 +120,14 @@ function formPayload() {
     payload.nAdsorbate = $("#nAdsorbate").value;
   } else if (mode === "doping") {
     payload.nDopant = $("#nDopant").value;
-    payload.muDopant = $("#muDopant").value;
-    payload.muHost = $("#muHost").value;
+    payload.dopantAtomIndex = $("#dopantAtomIndex").value;
+    payload.hostAtomIndex = $("#hostAtomIndex").value;
+    payload.chargeState = $("#chargeState").value;
+    payload.efermi = $("#efermi").value;
+    payload.correction = $("#correction").value;
+  } else if (mode === "defect") {
+    payload.nRemoved = $("#nRemoved").value;
+    payload.removedAtomIndex = $("#removedAtomIndex").value;
     payload.chargeState = $("#chargeState").value;
     payload.efermi = $("#efermi").value;
     payload.correction = $("#correction").value;
@@ -134,33 +147,106 @@ function formatCell(value) {
   return String(value);
 }
 
+function hasMeaningfulValue(value) {
+  if (value === null || value === undefined || value === "") return false;
+  if (typeof value === "number") return Number.isFinite(value) && value !== 0;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return false;
+    const numeric = Number(trimmed);
+    return Number.isNaN(numeric) || numeric !== 0;
+  }
+  return true;
+}
+
 function preferredColumns(rows) {
   const available = new Set();
   rows.forEach((row) => Object.keys(row).forEach((key) => available.add(key)));
-  const preferred = [
-    "label",
+  const hidden = new Set([
     "task_number",
     "task_suffix",
+    "formula_terms",
+    "chemical_potential_term",
+    "mu_dopant",
+    "mu_host",
+    "mu_removed",
+    "doped_energy_file",
+    "defect_energy_file",
+    "pristine_energy_file",
+    "doped_structure_file",
+    "pristine_structure_file",
+    "reference_database",
+    "doped_path",
+    "defect_path",
+    "pristine_path",
+    "system_path",
+    "slab_path",
+    "adsorbate_path",
+    "system_energy_file",
+    "slab_energy_file",
+    "adsorbate_energy_file",
+  ]);
+  ["charge_correction_term", "charge_state", "efermi", "correction"].forEach((key) => {
+    if (!rows.some((row) => hasMeaningfulValue(row[key]))) hidden.add(key);
+  });
+  const preferred = [
+    "label",
     "status",
     "surface_energy_eV_per_surface",
     "adsorption_energy_eV",
     "formation_energy_eV",
     "excess_energy_eV",
     "energy_diff",
+    "dopant_element",
+    "host_element",
+    "defect_element",
+    "dopant_atom_index",
+    "host_atom_index",
+    "removed_atom_index",
+    "n_dopant",
+    "n_host",
+    "n_removed",
     "reference_energies",
-    "formula_terms",
     "E_slab",
     "E_slab_ads",
     "E_doped",
+    "E_defect",
+    "E_pristine",
     "reference_energy_eV",
+    "charge_state",
+    "efermi",
+    "charge_correction_term",
+    "correction",
     "n_surfaces",
     "error",
   ];
-  const columns = preferred.filter((key) => available.has(key));
+  const columns = preferred.filter((key) => available.has(key) && !hidden.has(key));
   Array.from(available).sort().forEach((key) => {
-    if (!columns.includes(key) && columns.length < 14) columns.push(key);
+    if (!columns.includes(key) && !hidden.has(key) && columns.length < 12) columns.push(key);
   });
   return columns;
+}
+
+function renderResultMeta(data) {
+  const node = $("#resultMeta");
+  node.innerHTML = "";
+  const items = [];
+  if (data.formula) items.push(["公式", data.formula]);
+  if (data.reference_summary) items.push(["参考能", data.reference_summary]);
+  if (!items.length) {
+    node.classList.add("hidden");
+    return;
+  }
+  items.forEach(([label, value]) => {
+    const item = document.createElement("div");
+    const strong = document.createElement("strong");
+    const span = document.createElement("span");
+    strong.textContent = label;
+    span.textContent = value;
+    item.append(strong, span);
+    node.appendChild(item);
+  });
+  node.classList.remove("hidden");
 }
 
 function renderResults(data) {
@@ -181,6 +267,7 @@ function renderResults(data) {
     item.textContent = `${kind}: ${path}`;
     savedNode.appendChild(item);
   });
+  renderResultMeta(data);
 
   if (!rows.length) {
     tbody.innerHTML = "<tr><td class=\"empty\">暂无结果</td></tr>";
@@ -220,6 +307,8 @@ async function runCalculation(event) {
     setStatus("Error", "error");
     $("#summaryText").textContent = error.message;
     $("#savedPaths").innerHTML = "";
+    $("#resultMeta").innerHTML = "";
+    $("#resultMeta").classList.add("hidden");
     $("#resultsTable thead").innerHTML = "";
     $("#resultsTable tbody").innerHTML = `<tr><td class="empty error-text">${error.message}</td></tr>`;
   }
