@@ -8,6 +8,7 @@ build/
 dist/
 *.egg-info/
 analysis_outputs/
+simple_substance_database/
 *.cube
 *.png
 *.csv

@@ -147,6 +147,8 @@ function preferredColumns(rows) {
     "formation_energy_eV",
     "excess_energy_eV",
     "energy_diff",
+    "reference_energies",
+    "formula_terms",
     "E_slab",
     "E_slab_ads",
     "E_doped",
@@ -235,6 +237,12 @@ function itemElement(entry) {
   name.className = "name";
   name.textContent = entry.name;
   name.title = entry.path;
+  if (entry.isDir) {
+    name.addEventListener("dblclick", (event) => {
+      event.stopPropagation();
+      loadBrowser(entry.path);
+    });
+  }
 
   const button = document.createElement("button");
   button.type = "button";

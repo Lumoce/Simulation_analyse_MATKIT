@@ -9,6 +9,7 @@ import csv
 import json
 import mimetypes
 import os
+import re
 import posixpath
 import urllib.parse
 import webbrowser
@@ -22,6 +23,7 @@ from matkit.energy import (
     calc_surface_excess_energy_from_directory,
     find_energy_file,
     find_structure_file,
+    iter_calculation_directories,
     read_calculation_energy,
 )
 
@@ -93,6 +95,8 @@ def _write_csv_file(path, rows):
         "formation_energy_eV",
         "excess_energy_eV",
         "energy_diff",
+        "reference_energies",
+        "formula_terms",
         "E_slab",
         "E_slab_ads",
         "E_doped",
@@ -113,6 +117,14 @@ def _with_surface_alias(row):
     if "surface_excess_energy_eV_per_surface" in row:
         row["surface_energy_eV_per_surface"] = row["surface_excess_energy_eV_per_surface"]
         del row["surface_excess_energy_eV_per_surface"]
+    row["formula_terms"] = "(E_slab - sum(n_i * mu_i)) / n_surfaces"
+    terms = row.get("reference_terms") or []
+    if terms:
+        row["reference_energies"] = "; ".join(
+            f"{term.get('element')}: mu={term.get('mu_eV_per_atom'):.6f} eV/atom"
+            for term in terms
+            if isinstance(term.get("mu_eV_per_atom"), (int, float))
+        )
     return row
 
 
@@ -120,6 +132,17 @@ def _is_calculation_path(path):
     if os.path.isfile(path):
         return find_energy_file(path) is not None
     return find_structure_file(path) is not None and find_energy_file(path) is not None
+
+
+def _infer_task_identity(path):
+    name = os.path.basename(os.path.normpath(str(path)))
+    match = re.search(r"task[._-]*(\d+)(.*)$", name, re.IGNORECASE)
+    if match:
+        return match.group(1), match.group(2).lstrip("._-")
+    match = re.search(r"(\d+)(.*)$", name)
+    if match:
+        return match.group(1), match.group(2).lstrip("._-")
+    return None, ""
 
 
 def _calculate_surface(payload):
@@ -186,6 +209,8 @@ def _calculate_adsorption(payload):
     result.update({
         "status": "ok",
         "label": payload.get("label") or os.path.basename(os.path.normpath(system)),
+        "formula_terms": "E_final - E_initial - n_adsorbate * E_adsorbate",
+        "reference_energies": f"E_adsorbate={E_adsorbate:.6f} eV",
         "system_path": system,
         "slab_path": slab,
         "adsorbate_path": adsorbate,
@@ -204,7 +229,7 @@ def _calculate_adsorption(payload):
 
 
 def _calculate_doping(payload):
-    doped = _resolve_path(payload.get("finalPath") or payload.get("doped"))
+    final_path = _resolve_path(payload.get("finalPath") or payload.get("doped"))
     pristine = _resolve_path(payload.get("initialPath") or payload.get("pristine"))
     n_dopant = int(payload.get("nDopant") or 1)
     mu_dopant = float(payload.get("muDopant") or 0)
@@ -212,32 +237,71 @@ def _calculate_doping(payload):
     charge = int(payload.get("chargeState") or 0)
     efermi = float(payload.get("efermi") or 0)
     correction = float(payload.get("correction") or 0)
-    E_doped, doped_energy_file, doped_converged = _energy_from_path(doped)
+
+    if not final_path:
+        raise ValueError("请选择缺陷/掺杂后终态目录。")
+    if not pristine:
+        raise ValueError("请选择缺陷前初态目录。")
+
     E_pristine, pristine_energy_file, pristine_converged = _energy_from_path(pristine)
-    result = calc_doping_energy(
-        E_doped=E_doped,
-        E_pristine=E_pristine,
-        n_dopant=n_dopant,
-        mu_dopant=mu_dopant,
-        mu_host=mu_host,
-        charge_state=charge,
-        efermi=efermi,
-        correction=correction,
-    )
-    result.update({
-        "status": "ok",
-        "label": payload.get("label") or os.path.basename(os.path.normpath(doped)),
-        "doped_path": doped,
-        "pristine_path": pristine,
-        "doped_energy_file": doped_energy_file,
-        "pristine_energy_file": pristine_energy_file,
-        "doped_is_converged": doped_converged,
-        "pristine_is_converged": pristine_converged,
-    })
+
+    if _is_calculation_path(final_path):
+        doped_dirs = [final_path]
+    else:
+        doped_dirs = list(iter_calculation_directories(final_path))
+        doped_dirs = [
+            path for path in doped_dirs
+            if re.search(r"task[._-]*\d+", os.path.basename(os.path.normpath(path)), re.IGNORECASE)
+        ] or doped_dirs
+
+    if not doped_dirs:
+        raise ValueError(f"未在终态目录下找到包含 POSCAR/CONTCAR 和 OUTCAR/log 的计算子目录: {final_path}")
+
+    results = []
+    for doped in doped_dirs:
+        task_number, task_suffix = _infer_task_identity(doped)
+        try:
+            E_doped, doped_energy_file, doped_converged = _energy_from_path(doped)
+            result = calc_doping_energy(
+                E_doped=E_doped,
+                E_pristine=E_pristine,
+                n_dopant=n_dopant,
+                mu_dopant=mu_dopant,
+                mu_host=mu_host,
+                charge_state=charge,
+                efermi=efermi,
+                correction=correction,
+            )
+            result.update({
+                "status": "ok",
+                "formula_terms": "E_final - E_initial - n_dopant * mu_dopant + n_host * mu_host + q * E_fermi + E_corr",
+                "reference_energies": f"mu_dopant={mu_dopant:.6f} eV/atom; mu_host={mu_host:.6f} eV/atom",
+                "doped_energy_file": doped_energy_file,
+                "pristine_energy_file": pristine_energy_file,
+                "doped_is_converged": doped_converged,
+                "pristine_is_converged": pristine_converged,
+            })
+        except Exception as exc:
+            result = {
+                "status": "error",
+                "formula_terms": "E_final - E_initial - n_dopant * mu_dopant + n_host * mu_host + q * E_fermi + E_corr",
+                "reference_energies": f"mu_dopant={mu_dopant:.6f} eV/atom; mu_host={mu_host:.6f} eV/atom",
+                "error": str(exc),
+            }
+        result.update({
+            "label": payload.get("label") or os.path.basename(os.path.normpath(doped)),
+            "task_number": task_number,
+            "task_suffix": task_suffix,
+            "doped_path": doped,
+            "pristine_path": pristine,
+        })
+        results.append(result)
+
+    ok_count = sum(1 for row in results if row.get("status") == "ok")
     return {
         "kind": "doping",
-        "summary": {"total": 1, "ok": 1, "errors": 0},
-        "results": [result],
+        "summary": {"total": len(results), "ok": ok_count, "errors": len(results) - ok_count},
+        "results": results,
     }
 
 
@@ -292,9 +356,7 @@ def browse_path(path):
     parent = os.path.dirname(path) if os.path.dirname(path) != path else path
     quick_roots = []
     for item in [
-            str(PROJECT_ROOT),
-            str(Path.home()),
-            "/Users/simon/Documents/ANU/multi_agent/Analyse_Software",
+            "/Users/simon/Documents/AISI/Cr2O3/Results",
             "/Users/simon/Documents/ANU/multi_agent"]:
         if item not in quick_roots:
             quick_roots.append(item)
